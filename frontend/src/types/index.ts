@@ -17,6 +17,7 @@ export interface ProjectScanResponse {
   agents: AgentConfig[]
   mcp_servers: string[]
   agent_count: number
+  project_skills?: SkillInfo[]
 }
 
 export interface HealthResponse {

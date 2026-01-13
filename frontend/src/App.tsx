@@ -22,6 +22,7 @@ interface AgentEditorProps {
   onSave: (updatedAgent: AgentConfig) => void
   globalResources: GlobalResourcesResponse
   mcpTools: MCPServerWithTools[]
+  projectSkills?: SkillInfo[]
 }
 
 interface DragDropZoneProps {
@@ -113,7 +114,7 @@ function DragDropZone({
   )
 }
 
-function AgentEditor({ agent, onClose, onSave, globalResources, mcpTools }: AgentEditorProps) {
+function AgentEditor({ agent, onClose, onSave, globalResources, mcpTools, projectSkills = [] }: AgentEditorProps) {
   const [editedAgent, setEditedAgent] = useState<AgentConfig>({
     ...agent,
     disallowedTools: agent.disallowedTools || [],
@@ -124,13 +125,19 @@ function AgentEditor({ agent, onClose, onSave, globalResources, mcpTools }: Agen
   const [expandedServers, setExpandedServers] = useState<Record<string, boolean>>({})
   const [manualMcpInput, setManualMcpInput] = useState('')
 
+  // Combine global and project skills for the editor
+  const allSkills = [
+    ...globalResources.skills,
+    ...projectSkills
+  ]
+
   // Separate base tools from MCP tools in agent's tools array
   const allToolsEnabled = editedAgent.tools === '*'
   const agentBaseTools = allToolsEnabled ? [] : (editedAgent.tools as string[]).filter(t => !t.startsWith('mcp__'))
   const agentMcpTools = allToolsEnabled ? [] : (editedAgent.tools as string[]).filter(t => t.startsWith('mcp__'))
 
   // Filter available items to exclude already assigned ones
-  const availableSkills = globalResources.skills
+  const availableSkills = allSkills
     .map((s) => s.name)
     .filter((name) => !editedAgent.skills.includes(name))
 
@@ -965,10 +972,14 @@ function AgentCard({ agent, onEdit }: { agent: AgentConfig; onEdit: (agent: Agen
 function ResourceSidebar({
   skills,
   mcpServers,
+  projectSkills = [],
 }: {
   skills: SkillInfo[]
   mcpServers: MCPServerInfo[]
+  projectSkills?: SkillInfo[]
 }) {
+  // Combine global and project skills
+  const allSkills = [...skills, ...projectSkills]
   const [expandedSections, setExpandedSections] = useState({
     baseTools: true,
     skills: false,
@@ -1017,12 +1028,12 @@ function ResourceSidebar({
             onClick={() => toggleSection('skills')}
             className="flex items-center justify-between w-full text-sm font-medium mb-2 hover:text-foreground transition-colors"
           >
-            <span>Skills ({skills.length})</span>
+            <span>Skills ({allSkills.length})</span>
             <span className="text-xs">{expandedSections.skills ? '▼' : '▸'}</span>
           </button>
           {expandedSections.skills && (
             <div className="space-y-1 pl-2">
-              {skills.map((skill) => (
+              {allSkills.map((skill) => (
                 <div
                   key={skill.name}
                   draggable
@@ -1212,6 +1223,7 @@ export default function App() {
             <ResourceSidebar
               skills={globalResources.skills}
               mcpServers={globalResources.mcp_servers}
+              projectSkills={projectData.project_skills}
             />
 
             <main className="flex-1 overflow-y-auto p-6">
@@ -1260,6 +1272,7 @@ export default function App() {
           onSave={handleSaveAgent}
           globalResources={globalResources}
           mcpTools={mcpTools}
+          projectSkills={projectData?.project_skills}
         />
       )}
 

@@ -101,6 +101,9 @@ class ProjectScanResponse(BaseModel):
     skills: list[SkillInfo] = Field(
         default_factory=list, description="Globally available skills from ~/.claude/plugins"
     )
+    project_skills: list[SkillInfo] = Field(
+        default_factory=list, description="Project-level skills from <project>/.claude/skills"
+    )
     connected_mcp_servers: list[MCPServerInfo] = Field(
         default_factory=list, description="Connected MCP servers from 'claude mcp list'"
     )

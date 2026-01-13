@@ -229,6 +229,34 @@ async def scan_project(request: ProjectScanRequest) -> ProjectScanResponse:
         for s in discovered_skills
     ]
 
+    # Discover project-level skills
+    project_skills: list[SkillInfo] = []
+    project_skills_dir = project_path / ".claude" / "skills"
+    if project_skills_dir.exists():
+        for skill_file in project_skills_dir.rglob("SKILL.md"):
+            skill_name = skill_file.parent.name
+            # Read description from SKILL.md if possible
+            description = None
+            try:
+                content = skill_file.read_text()
+                # Try to extract description from frontmatter or first line
+                if content.startswith("---"):
+                    # Parse YAML frontmatter
+                    import yaml
+                    parts = content.split("---", 2)
+                    if len(parts) >= 3:
+                        frontmatter = yaml.safe_load(parts[1])
+                        if frontmatter:
+                            description = frontmatter.get("description", "")
+            except Exception:
+                pass
+
+            project_skills.append(SkillInfo(
+                name=skill_name,
+                path=str(skill_file),
+                description=description,
+            ))
+
     # Discover connected MCP servers via claude mcp list
     discovered_servers = _discovery.discover_mcp_servers()
     connected_mcp_servers = [
@@ -247,6 +275,7 @@ async def scan_project(request: ProjectScanRequest) -> ProjectScanResponse:
         mcp_servers=mcp_servers,
         agent_count=len(agents),
         skills=skills,
+        project_skills=project_skills,
         connected_mcp_servers=connected_mcp_servers,
     )
 

@@ -33,48 +33,71 @@ class ResourceDiscovery:
     """Service for discovering available skills and MCP servers."""
 
     def discover_skills(self) -> list[DiscoveredSkill]:
-        """Discover skills from ~/.claude/plugins directory.
+        """Discover skills from multiple locations.
 
-        Searches recursively for SKILL.md files. The skill name is the
-        containing folder name.
+        Scans the following directories for SKILL.md files:
+        - ~/.claude/plugins (excluding cache)
+        - ~/.claude/skills (global skills)
+
+        Note: Project-level skills (<project>/.claude/skills) are discovered
+        during project scan, not in global discovery.
+
+        The skill name is the containing folder name.
 
         Example:
-            ~/.claude/plugins/cache/foo-plugin/skills/my-skill/SKILL.md
+            ~/.claude/plugins/foo-plugin/skills/my-skill/SKILL.md
             -> skill name is "my-skill"
 
         Returns:
             list[DiscoveredSkill]: List of discovered skills.
         """
         skills: list[DiscoveredSkill] = []
-        plugins_dir = Path.home() / ".claude" / "plugins"
+        seen_names: set[str] = set()  # Avoid duplicates
 
-        if not plugins_dir.exists():
-            logger.debug("Plugins directory does not exist: %s", plugins_dir)
-            return skills
+        # Locations to scan
+        home = Path.home()
+        scan_paths = [
+            home / ".claude" / "plugins",
+            home / ".claude" / "skills",
+        ]
 
-        # Find all SKILL.md files recursively
-        for skill_file in plugins_dir.rglob("SKILL.md"):
-            # Skip cache directory
-            if "cache" in skill_file.parts:
+        for base_path in scan_paths:
+            if not base_path.exists():
+                logger.debug("Skills directory does not exist: %s", base_path)
                 continue
-            try:
-                # The skill name is the containing directory name
-                skill_name = skill_file.parent.name
-                skill_path = str(skill_file)
 
-                # Try to extract description from frontmatter
-                description = self._extract_skill_description(skill_file)
+            # Find all SKILL.md files recursively
+            for skill_file in base_path.rglob("SKILL.md"):
+                # Skip cache directory
+                if "cache" in skill_file.parts:
+                    continue
 
-                skills.append(
-                    DiscoveredSkill(
-                        name=skill_name,
-                        path=skill_path,
-                        description=description,
+                try:
+                    # The skill name is the containing directory name
+                    skill_name = skill_file.parent.name
+                    skill_path = str(skill_file)
+
+                    # Skip duplicates
+                    if skill_name in seen_names:
+                        logger.debug(
+                            "Skipping duplicate skill: %s at %s", skill_name, skill_path
+                        )
+                        continue
+                    seen_names.add(skill_name)
+
+                    # Try to extract description from frontmatter
+                    description = self._extract_skill_description(skill_file)
+
+                    skills.append(
+                        DiscoveredSkill(
+                            name=skill_name,
+                            path=skill_path,
+                            description=description,
+                        )
                     )
-                )
-                logger.debug("Discovered skill: %s at %s", skill_name, skill_path)
-            except Exception as e:
-                logger.warning("Error processing skill file %s: %s", skill_file, e)
+                    logger.debug("Discovered skill: %s at %s", skill_name, skill_path)
+                except Exception as e:
+                    logger.warning("Error processing skill file %s: %s", skill_file, e)
 
         return sorted(skills, key=lambda s: s.name)
 

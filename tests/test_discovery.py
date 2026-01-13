@@ -238,3 +238,319 @@ name: test
 
         description = discovery._extract_skill_description(skill_file)
         assert description is None
+
+
+class TestEnabledPlugins:
+    """Test enabled plugins discovery functionality."""
+
+    def test_get_enabled_plugins_no_settings_file(
+        self, discovery: ResourceDiscovery, tmp_path: Path
+    ):
+        """Test when settings.json does not exist."""
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            plugins = discovery._get_enabled_plugins()
+            assert plugins == []
+
+    def test_get_enabled_plugins_empty_settings(
+        self, discovery: ResourceDiscovery, tmp_path: Path
+    ):
+        """Test when settings.json has no enabledPlugins section."""
+        settings_dir = tmp_path / ".claude"
+        settings_dir.mkdir(parents=True)
+        settings_file = settings_dir / "settings.json"
+        settings_file.write_text("{}")
+
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            plugins = discovery._get_enabled_plugins()
+            assert plugins == []
+
+    def test_get_enabled_plugins_with_enabled(
+        self, discovery: ResourceDiscovery, tmp_path: Path
+    ):
+        """Test parsing enabled plugins correctly."""
+        settings_dir = tmp_path / ".claude"
+        settings_dir.mkdir(parents=True)
+        settings_file = settings_dir / "settings.json"
+        settings_file.write_text("""{
+            "enabledPlugins": {
+                "superpowers@superpowers-marketplace": true,
+                "other-plugin@marketplace": false
+            }
+        }""")
+
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            plugins = discovery._get_enabled_plugins()
+            assert len(plugins) == 1
+            assert ("superpowers", "superpowers-marketplace") in plugins
+
+    def test_get_enabled_plugins_multiple_enabled(
+        self, discovery: ResourceDiscovery, tmp_path: Path
+    ):
+        """Test multiple enabled plugins."""
+        settings_dir = tmp_path / ".claude"
+        settings_dir.mkdir(parents=True)
+        settings_file = settings_dir / "settings.json"
+        settings_file.write_text("""{
+            "enabledPlugins": {
+                "plugin-a@marketplace-a": true,
+                "plugin-b@marketplace-b": true,
+                "plugin-c@marketplace-c": false
+            }
+        }""")
+
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            plugins = discovery._get_enabled_plugins()
+            assert len(plugins) == 2
+            assert ("plugin-a", "marketplace-a") in plugins
+            assert ("plugin-b", "marketplace-b") in plugins
+
+    def test_get_enabled_plugins_invalid_format(
+        self, discovery: ResourceDiscovery, tmp_path: Path
+    ):
+        """Test handling of invalid plugin identifier (missing @)."""
+        settings_dir = tmp_path / ".claude"
+        settings_dir.mkdir(parents=True)
+        settings_file = settings_dir / "settings.json"
+        settings_file.write_text("""{
+            "enabledPlugins": {
+                "invalid-no-at-symbol": true,
+                "valid@marketplace": true
+            }
+        }""")
+
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            plugins = discovery._get_enabled_plugins()
+            assert len(plugins) == 1
+            assert ("valid", "marketplace") in plugins
+
+    def test_get_enabled_plugins_invalid_json(
+        self, discovery: ResourceDiscovery, tmp_path: Path
+    ):
+        """Test handling of invalid JSON."""
+        settings_dir = tmp_path / ".claude"
+        settings_dir.mkdir(parents=True)
+        settings_file = settings_dir / "settings.json"
+        settings_file.write_text("{ invalid json }")
+
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            plugins = discovery._get_enabled_plugins()
+            assert plugins == []
+
+    def test_get_enabled_plugins_invalid_enabled_plugins_type(
+        self, discovery: ResourceDiscovery, tmp_path: Path
+    ):
+        """Test handling when enabledPlugins is not a dictionary."""
+        settings_dir = tmp_path / ".claude"
+        settings_dir.mkdir(parents=True)
+        settings_file = settings_dir / "settings.json"
+        settings_file.write_text('{"enabledPlugins": "not a dict"}')
+
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            plugins = discovery._get_enabled_plugins()
+            assert plugins == []
+
+
+class TestDiscoverSkillsFromEnabledPlugins:
+    """Test discovering skills from enabled plugins cache."""
+
+    def test_discover_no_enabled_plugins(
+        self, discovery: ResourceDiscovery, tmp_path: Path
+    ):
+        """Test when no plugins are enabled."""
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            seen = set()
+            skills = discovery._discover_skills_from_enabled_plugins(seen)
+            assert skills == []
+
+    def test_discover_no_cache_directory(
+        self, discovery: ResourceDiscovery, tmp_path: Path
+    ):
+        """Test when cache directory doesn't exist."""
+        settings_dir = tmp_path / ".claude"
+        settings_dir.mkdir(parents=True)
+        settings_file = settings_dir / "settings.json"
+        settings_file.write_text("""{
+            "enabledPlugins": {
+                "superpowers@superpowers-marketplace": true
+            }
+        }""")
+
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            seen = set()
+            skills = discovery._discover_skills_from_enabled_plugins(seen)
+            assert skills == []
+
+    def test_discover_skills_from_enabled_plugin(
+        self, discovery: ResourceDiscovery, tmp_path: Path
+    ):
+        """Test discovering skills from an enabled plugin."""
+        # Create settings
+        settings_dir = tmp_path / ".claude"
+        settings_dir.mkdir(parents=True)
+        settings_file = settings_dir / "settings.json"
+        settings_file.write_text("""{
+            "enabledPlugins": {
+                "superpowers@superpowers-marketplace": true
+            }
+        }""")
+
+        # Create cache structure with skill
+        cache_dir = (
+            tmp_path
+            / ".claude"
+            / "plugins"
+            / "cache"
+            / "superpowers-marketplace"
+            / "superpowers"
+            / "4.0.3"
+            / "skills"
+            / "my-cached-skill"
+        )
+        cache_dir.mkdir(parents=True)
+        skill_file = cache_dir / "SKILL.md"
+        skill_file.write_text("""---
+name: my-cached-skill
+description: A cached skill from plugin
+---
+# Skill content
+""")
+
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            seen = set()
+            skills = discovery._discover_skills_from_enabled_plugins(seen)
+
+            assert len(skills) == 1
+            assert skills[0].name == "my-cached-skill"
+            assert skills[0].description == "A cached skill from plugin"
+            assert "my-cached-skill" in seen
+
+    def test_discover_skills_respects_seen_names(
+        self, discovery: ResourceDiscovery, tmp_path: Path
+    ):
+        """Test that skills already in seen_names are skipped."""
+        # Create settings
+        settings_dir = tmp_path / ".claude"
+        settings_dir.mkdir(parents=True)
+        settings_file = settings_dir / "settings.json"
+        settings_file.write_text("""{
+            "enabledPlugins": {
+                "superpowers@superpowers-marketplace": true
+            }
+        }""")
+
+        # Create cache structure with skill
+        cache_dir = (
+            tmp_path
+            / ".claude"
+            / "plugins"
+            / "cache"
+            / "superpowers-marketplace"
+            / "superpowers"
+            / "4.0.3"
+            / "skills"
+            / "duplicate-skill"
+        )
+        cache_dir.mkdir(parents=True)
+        skill_file = cache_dir / "SKILL.md"
+        skill_file.write_text("""---
+name: duplicate-skill
+description: Should be skipped
+---
+""")
+
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            seen = {"duplicate-skill"}  # Already seen
+            skills = discovery._discover_skills_from_enabled_plugins(seen)
+
+            assert len(skills) == 0
+
+    def test_discover_skills_disabled_plugin_not_scanned(
+        self, discovery: ResourceDiscovery, tmp_path: Path
+    ):
+        """Test that disabled plugins are not scanned."""
+        # Create settings with disabled plugin
+        settings_dir = tmp_path / ".claude"
+        settings_dir.mkdir(parents=True)
+        settings_file = settings_dir / "settings.json"
+        settings_file.write_text("""{
+            "enabledPlugins": {
+                "disabled-plugin@marketplace": false
+            }
+        }""")
+
+        # Create cache structure with skill (should not be found)
+        cache_dir = (
+            tmp_path
+            / ".claude"
+            / "plugins"
+            / "cache"
+            / "marketplace"
+            / "disabled-plugin"
+            / "1.0.0"
+            / "skills"
+            / "hidden-skill"
+        )
+        cache_dir.mkdir(parents=True)
+        skill_file = cache_dir / "SKILL.md"
+        skill_file.write_text("""---
+name: hidden-skill
+description: Should not be found
+---
+""")
+
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            seen = set()
+            skills = discovery._discover_skills_from_enabled_plugins(seen)
+
+            assert len(skills) == 0
+
+    def test_discover_skills_integration_with_discover_skills(
+        self, discovery: ResourceDiscovery, tmp_path: Path
+    ):
+        """Test that discover_skills includes enabled plugin skills."""
+        # Create settings
+        settings_dir = tmp_path / ".claude"
+        settings_dir.mkdir(parents=True)
+        settings_file = settings_dir / "settings.json"
+        settings_file.write_text("""{
+            "enabledPlugins": {
+                "superpowers@superpowers-marketplace": true
+            }
+        }""")
+
+        # Create a non-cache skill
+        non_cache_skill_dir = (
+            tmp_path / ".claude" / "plugins" / "local-plugin" / "skills" / "local-skill"
+        )
+        non_cache_skill_dir.mkdir(parents=True)
+        (non_cache_skill_dir / "SKILL.md").write_text("""---
+name: local-skill
+description: A local skill
+---
+""")
+
+        # Create cache skill
+        cache_dir = (
+            tmp_path
+            / ".claude"
+            / "plugins"
+            / "cache"
+            / "superpowers-marketplace"
+            / "superpowers"
+            / "4.0.3"
+            / "skills"
+            / "cached-skill"
+        )
+        cache_dir.mkdir(parents=True)
+        (cache_dir / "SKILL.md").write_text("""---
+name: cached-skill
+description: A cached skill
+---
+""")
+
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            skills = discovery.discover_skills()
+
+            assert len(skills) == 2
+            skill_names = {s.name for s in skills}
+            assert skill_names == {"local-skill", "cached-skill"}

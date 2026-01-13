@@ -38,6 +38,10 @@ class ResourceDiscovery:
         Scans the following directories for SKILL.md files:
         - ~/.claude/plugins (excluding cache)
         - ~/.claude/skills (global skills)
+        - ~/.claude/plugins/cache/<marketplace>/<plugin>/ for enabled plugins
+
+        Enabled plugins are determined by the `enabledPlugins` section in
+        ~/.claude/settings.json. Only plugins with a value of `true` are included.
 
         Note: Project-level skills (<project>/.claude/skills) are discovered
         during project scan, not in global discovery.
@@ -99,6 +103,10 @@ class ResourceDiscovery:
                 except Exception as e:
                     logger.warning("Error processing skill file %s: %s", skill_file, e)
 
+        # Discover skills from enabled plugins in the cache
+        plugin_skills = self._discover_skills_from_enabled_plugins(seen_names)
+        skills.extend(plugin_skills)
+
         return sorted(skills, key=lambda s: s.name)
 
     def _extract_skill_description(self, skill_file: Path) -> str | None:
@@ -136,6 +144,134 @@ class ResourceDiscovery:
         except Exception as e:
             logger.warning("Error extracting description from %s: %s", skill_file, e)
             return None
+
+    def _get_enabled_plugins(self) -> list[tuple[str, str]]:
+        """Get list of enabled plugins from settings.json.
+
+        Reads ~/.claude/settings.json and parses the enabledPlugins section.
+        Plugin identifiers are in the format "plugin_name@marketplace".
+
+        Returns:
+            list[tuple[str, str]]: List of (plugin_name, marketplace) tuples
+                for plugins with enabledPlugins[key] == True.
+        """
+        settings_path = Path.home() / ".claude" / "settings.json"
+        enabled_plugins: list[tuple[str, str]] = []
+
+        if not settings_path.exists():
+            logger.debug("Settings file does not exist: %s", settings_path)
+            return enabled_plugins
+
+        try:
+            content = settings_path.read_text(encoding="utf-8")
+            settings = json.loads(content)
+
+            enabled_plugins_section = settings.get("enabledPlugins", {})
+            if not isinstance(enabled_plugins_section, dict):
+                logger.warning(
+                    "enabledPlugins section is not a dictionary in %s", settings_path
+                )
+                return enabled_plugins
+
+            for plugin_id, enabled in enabled_plugins_section.items():
+                if enabled is True:
+                    # Parse "plugin_name@marketplace" format
+                    if "@" in plugin_id:
+                        plugin_name, marketplace = plugin_id.rsplit("@", 1)
+                        enabled_plugins.append((plugin_name, marketplace))
+                        logger.debug(
+                            "Found enabled plugin: %s from marketplace %s",
+                            plugin_name,
+                            marketplace,
+                        )
+                    else:
+                        logger.warning(
+                            "Invalid plugin identifier format (missing @): %s", plugin_id
+                        )
+
+        except json.JSONDecodeError as e:
+            logger.warning("Error parsing settings.json: %s", e)
+        except Exception as e:
+            logger.warning("Error reading settings file %s: %s", settings_path, e)
+
+        return enabled_plugins
+
+    def _discover_skills_from_enabled_plugins(
+        self, seen_names: set[str]
+    ) -> list[DiscoveredSkill]:
+        """Discover skills from enabled plugins in the cache directory.
+
+        For each enabled plugin, scans its cache directory for SKILL.md files.
+        Cache structure: ~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/skills/
+
+        Args:
+            seen_names: Set of skill names already discovered (to avoid duplicates).
+                This set is modified in place to track newly discovered skills.
+
+        Returns:
+            list[DiscoveredSkill]: List of discovered skills from enabled plugins.
+        """
+        skills: list[DiscoveredSkill] = []
+        enabled_plugins = self._get_enabled_plugins()
+
+        if not enabled_plugins:
+            logger.debug("No enabled plugins found")
+            return skills
+
+        cache_base = Path.home() / ".claude" / "plugins" / "cache"
+        if not cache_base.exists():
+            logger.debug("Plugin cache directory does not exist: %s", cache_base)
+            return skills
+
+        for plugin_name, marketplace in enabled_plugins:
+            plugin_cache_path = cache_base / marketplace / plugin_name
+
+            if not plugin_cache_path.exists():
+                logger.debug(
+                    "Cache directory for plugin %s not found: %s",
+                    plugin_name,
+                    plugin_cache_path,
+                )
+                continue
+
+            # Find all SKILL.md files in the plugin's cache directory
+            # This handles any version subdirectories
+            for skill_file in plugin_cache_path.rglob("SKILL.md"):
+                try:
+                    skill_name = skill_file.parent.name
+                    skill_path = str(skill_file)
+
+                    # Skip duplicates
+                    if skill_name in seen_names:
+                        logger.debug(
+                            "Skipping duplicate plugin skill: %s at %s",
+                            skill_name,
+                            skill_path,
+                        )
+                        continue
+                    seen_names.add(skill_name)
+
+                    description = self._extract_skill_description(skill_file)
+
+                    skills.append(
+                        DiscoveredSkill(
+                            name=skill_name,
+                            path=skill_path,
+                            description=description,
+                        )
+                    )
+                    logger.debug(
+                        "Discovered plugin skill: %s at %s (plugin: %s)",
+                        skill_name,
+                        skill_path,
+                        plugin_name,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Error processing plugin skill file %s: %s", skill_file, e
+                    )
+
+        return skills
 
     def discover_mcp_servers(self) -> list[DiscoveredMCPServer]:
         """Discover MCP servers by running 'claude mcp list'.

@@ -54,6 +54,9 @@ class ResourceDiscovery:
 
         # Find all SKILL.md files recursively
         for skill_file in plugins_dir.rglob("SKILL.md"):
+            # Skip cache directory
+            if "cache" in skill_file.parts:
+                continue
             try:
                 # The skill name is the containing directory name
                 skill_name = skill_file.parent.name

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from ruamel.yaml import YAML
+from ruamel.yaml.scalarstring import SingleQuotedScalarString
 
 
 @dataclass
@@ -142,7 +143,9 @@ class AgentParser:
 
         # Handle tools serialization
         if agent.tools == "*":
-            frontmatter["tools"] = "*"
+            # Use SingleQuotedScalarString to ensure asterisk is quoted in YAML output
+            # Otherwise ruamel.yaml outputs bare * which is interpreted as an alias
+            frontmatter["tools"] = SingleQuotedScalarString("*")
         elif agent.tools:
             frontmatter["tools"] = agent.tools
 

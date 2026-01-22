@@ -76,7 +76,7 @@ export default function ProjectPicker({ onSelectProject }: ProjectPickerProps) {
   })
 
   return (
-    <div className="h-screen flex flex-col bg-background">
+    <div className="h-dvh flex flex-col bg-background">
       <header className="border-b border-border bg-background-elevated px-6 py-4">
         <h1 className="text-xl font-semibold">Claude Subagent Editor</h1>
         <p className="text-sm text-foreground-secondary mt-1">Select a project to get started</p>
@@ -106,6 +106,7 @@ export default function ProjectPicker({ onSelectProject }: ProjectPickerProps) {
                   onKeyDown={(e) => e.key === 'Enter' && addProject()}
                   placeholder="/path/to/project"
                   className="flex-1 px-3 py-2 bg-background border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-tool/50"
+                  aria-label="Project path"
                   autoFocus
                 />
                 <button
@@ -151,7 +152,16 @@ export default function ProjectPicker({ onSelectProject }: ProjectPickerProps) {
                 <Card
                   key={project.path}
                   className="group flex items-center justify-between p-4 hover:bg-background-hover transition-colors cursor-pointer"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => selectProject(project)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      selectProject(project)
+                    }
+                  }}
+                  aria-label={`Open project ${project.name}`}
                 >
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <Folder className="w-5 h-5 text-tool flex-shrink-0" />

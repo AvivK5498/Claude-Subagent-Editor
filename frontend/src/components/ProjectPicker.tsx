@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Folder, Plus, X, ChevronRight } from 'lucide-react'
+import { Card } from '@/components/ui/card'
 import type { Project } from '@/types'
 
 const STORAGE_KEY = 'claude-subagent-editor-projects'
@@ -147,9 +148,9 @@ export default function ProjectPicker({ onSelectProject }: ProjectPickerProps) {
           ) : (
             <div className="space-y-2">
               {sortedProjects.map((project) => (
-                <div
+                <Card
                   key={project.path}
-                  className="group flex items-center justify-between p-4 border border-border rounded-lg bg-background-elevated hover:bg-background-hover transition-colors cursor-pointer"
+                  className="group flex items-center justify-between p-4 hover:bg-background-hover transition-colors cursor-pointer"
                   onClick={() => selectProject(project)}
                 >
                   <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -174,12 +175,13 @@ export default function ProjectPicker({ onSelectProject }: ProjectPickerProps) {
                       }}
                       className="p-2 text-foreground-muted hover:text-foreground hover:bg-background rounded opacity-0 group-hover:opacity-100 transition-all"
                       title="Remove project"
+                      aria-label="Remove project"
                     >
                       <X className="w-4 h-4" />
                     </button>
                     <ChevronRight className="w-5 h-5 text-foreground-muted" />
                   </div>
-                </div>
+                </Card>
               ))}
             </div>
           )}

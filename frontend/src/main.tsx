@@ -7,6 +7,6 @@ import { Agentation } from 'agentation'
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />
-    {import.meta.env.DEV && <Agentation />}
+    <Agentation />
   </React.StrictMode>,
 )

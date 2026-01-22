@@ -183,7 +183,7 @@ export default function ProjectPicker({ onSelectProject }: ProjectPickerProps) {
                         e.stopPropagation()
                         removeProject(project.path)
                       }}
-                      className="p-2 text-foreground-muted hover:text-foreground hover:bg-background rounded opacity-0 group-hover:opacity-100 transition-all"
+                      className="p-2 text-foreground-muted hover:text-foreground hover:bg-background rounded opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-all"
                       title="Remove project"
                       aria-label="Remove project"
                     >

@@ -1,41 +1,203 @@
-# claude_subagent_editor
+# claude-subagent-editor
 
 ## Orchestrator Rules
 
-**YOU ARE AN ORCHESTRATOR. You delegate, never implement.**
+**YOU ARE AN ORCHESTRATOR. You investigate, then delegate implementation.**
 
-- NEVER use Grep/Edit/Write/WebFetch - go directly to delegation
-- Don't pass raw HTML/code to supervisors - describe the location instead
-- Keep supervisor prompts minimal - they find context themselves
+- Use Glob, Grep, Read to investigate issues
+- Delegate implementation to supervisors via Task()
+- Don't Edit/Write code yourself - supervisors implement
+
+## Investigation-First Workflow
+
+1. **Investigate** - Use Grep, Read, Glob to understand the issue
+2. **Identify root cause** - Find the specific file, function, line
+3. **Formulate fix** - Determine the correct solution
+4. **Delegate with confidence** - Tell the supervisor exactly what to fix
+
+### Delegation Format
+
+```
+Task(
+  subagent_type="{tech}-supervisor",
+  prompt="BEAD_ID: {id}
+
+Problem: [what's broken]
+Root cause: [file:line - what you found]
+Fix: [specific change to make]"
+)
+```
+
+Supervisors execute your fix confidently. They only deviate if they find clear evidence the fix is wrong.
 
 ## Delegation
 
-**Read-only (Codex):** `mcp__codex-delegator__invoke_agent(agent="scout|detective|architect|scribe", task_prompt="...")`
+**Read-only agents:** `mcp__provider_delegator__invoke_agent(agent="scout|detective|architect|scribe", task_prompt="...")`
 
-**Implementing (Task):** `Task(subagent_type="<name>-supervisor", prompt="BEAD_ID: {id}\n\n{description}")`
+**Implementation:** `Task(subagent_type="<name>-supervisor", prompt="BEAD_ID: {id}\n\n{task}")`
 
 ## Beads Commands
 
 ```bash
-bd create "Title" -d "Description"  # Create (description required)
-bd list                             # List beads
-bd show ID                          # Details
-bd update ID --status inreview      # Mark done
-bd close ID                         # Close
+bd create "Title" -d "Description"                    # Create task
+bd create "Title" -d "..." --type epic                # Create epic
+bd create "Title" -d "..." --parent {EPIC_ID}         # Create child task
+bd create "Title" -d "..." --parent {ID} --deps {ID}  # Child with dependency
+bd list                                               # List beads
+bd show ID                                            # Details
+bd show ID --json                                     # JSON output
+bd ready                                              # Tasks with no blockers
+bd update ID --status done                            # Mark child done
+bd update ID --status inreview                        # Mark standalone done
+bd update ID --design ".designs/{ID}.md"              # Set design doc path
+bd close ID                                           # Close
+bd epic status ID                                     # Epic completion status
 ```
 
-## Workflow
+## When to Use Epic vs Standalone
 
-1. Create bead: `bd create "Task" -d "Details"`
-2. Dispatch: `Task(subagent_type="<tech>-supervisor", prompt="BEAD_ID: {id}\n\n{task}")`
-3. Supervisor works on `bd-{ID}` branch, marks `inreview`
-4. Merge: `git merge bd-{ID}`
-5. Conflicts? → `merge-supervisor`
+| Signals | Workflow |
+|---------|----------|
+| Single tech domain (just frontend, just DB, just backend) | Standalone |
+| Multiple supervisors needed | **Epic** |
+| "First X, then Y" in your thinking | **Epic** |
+| Any infrastructure + code change | **Epic** |
+| Any DB + API + frontend change | **Epic** |
+
+**Anti-pattern to avoid:**
+```
+"This is cross-domain but simple, so I'll just dispatch sequentially"
+```
+→ WRONG. Cross-domain = Epic. No exceptions.
+
+## Standalone Workflow (Single Supervisor)
+
+For simple tasks handled by one supervisor:
+
+1. Investigate the issue (Grep, Read)
+2. Create bead: `bd create "Task" -d "Details"`
+3. Dispatch with fix: `Task(subagent_type="<tech>-supervisor", prompt="BEAD_ID: {id}\n\n{problem + fix}")`
+4. Supervisor works on `bd-{ID}` branch, marks `inreview` when done
+5. Merge: `git checkout main && git merge bd-{ID}`
 6. Close: `bd close {ID}`
+
+## Epic Workflow (Cross-Domain Features)
+
+For features requiring multiple supervisors (e.g., DB + API + Frontend):
+
+### 1. Create Epic
+
+```bash
+bd create "Feature name" -d "Description" --type epic
+# Returns: {EPIC_ID}
+
+git checkout -b bd-{EPIC_ID}
+```
+
+### 2. Create Design Doc (if needed)
+
+If the epic involves cross-domain work, dispatch architect FIRST:
+
+```
+Task(
+  subagent_type="architect",
+  prompt="Create design doc for EPIC_ID: {EPIC_ID}
+         Feature: [description]
+         Output: .designs/{EPIC_ID}.md
+
+         Include:
+         - Schema definitions (exact column names, types)
+         - API contracts (endpoints, request/response shapes)
+         - Shared constants/enums
+         - Data flow between layers"
+)
+```
+
+Then link it to the epic:
+```bash
+bd update {EPIC_ID} --design ".designs/{EPIC_ID}.md"
+```
+
+### 3. Create Children with Dependencies
+
+```bash
+# First task (no dependencies)
+bd create "Create DB schema" -d "..." --parent {EPIC_ID}
+# Returns: {EPIC_ID}.1
+
+# Second task (depends on first)
+bd create "Create API endpoints" -d "..." --parent {EPIC_ID} --deps "{EPIC_ID}.1"
+# Returns: {EPIC_ID}.2
+
+# Third task (depends on second)
+bd create "Create frontend" -d "..." --parent {EPIC_ID} --deps "{EPIC_ID}.2"
+# Returns: {EPIC_ID}.3
+```
+
+### 4. Dispatch Sequentially
+
+Use `bd ready` to find unblocked tasks:
+
+```bash
+bd ready --json | jq -r '.[] | select(.id | startswith("{EPIC_ID}.")) | .id' | head -1
+```
+
+Dispatch format for epic children:
+```
+Task(
+  subagent_type="{appropriate}-supervisor",
+  prompt="BEAD_ID: {CHILD_ID}
+EPIC_BRANCH: bd-{EPIC_ID}
+EPIC_ID: {EPIC_ID}
+
+{task description with fix}"
+)
+```
+
+**WAIT for each child to complete before dispatching next.**
+
+### 5. Merge and Close
+
+```bash
+git checkout main
+git merge bd-{EPIC_ID}
+bd close {EPIC_ID}  # Closes epic and all children
+```
+
+## Design Doc Guidelines
+
+When the architect creates a design doc, it should include:
+
+```markdown
+# Feature: {name}
+
+## Schema
+```sql
+-- Exact column names and types
+ALTER TABLE x ADD COLUMN y TYPE;
+```
+
+## API Contract
+```
+POST /api/endpoint
+Request: { field: type }
+Response: { field: type }
+```
+
+## Shared Constants
+```
+STATUS_ACTIVE = 1
+STATUS_INACTIVE = 0
+```
+
+## Data Flow
+1. Frontend calls POST /api/...
+2. Backend validates and stores in DB
+3. Backend returns response
+```
 
 ## Supervisors
 
-- python-backend-supervisor
 - react-supervisor
-- worker-supervisor
+- python-backend-supervisor
 - merge-supervisor

@@ -3,6 +3,7 @@ import { ArrowLeft, X, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-r
 import type { AgentConfig, ProjectScanResponse, ModelType, SkillInfo, MCPServerInfo, GlobalResourcesResponse, MCPServerWithTools } from '@/types'
 import { cn } from '@/lib/utils'
 import ProjectPicker from '@/components/ProjectPicker'
+import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 
 const modelColors = {
   opus: 'text-opus',
@@ -835,8 +836,8 @@ function AgentCard({ agent, onEdit }: { agent: AgentConfig; onEdit: (agent: Agen
   const mcpTools = agent.tools === '*' ? [] : (agent.tools as string[]).filter(t => t.startsWith('mcp__'));
 
   return (
-    <div className="border border-border rounded-lg p-4 bg-background-elevated hover:bg-background-hover transition-colors flex flex-col h-full">
-      <div className="flex items-start justify-between mb-3">
+    <Card className="flex h-full flex-col transition-colors hover:bg-background-hover">
+      <CardHeader className="flex-row items-start justify-between space-y-0 pb-2">
         <div>
           <h3 className="font-mono text-base font-medium">{agent.name}</h3>
           {agent.nickname && (
@@ -846,14 +847,15 @@ function AgentCard({ agent, onEdit }: { agent: AgentConfig; onEdit: (agent: Agen
         <span className={cn('text-xs font-medium uppercase', modelColors[agent.model])}>
           {agent.model}
         </span>
-      </div>
+      </CardHeader>
 
-      <p className="text-sm text-foreground-secondary mb-4 line-clamp-2">
-        {agent.description}
-      </p>
+      <CardContent className="flex flex-1 flex-col gap-3 pt-0">
+        <p className="text-sm text-foreground-secondary line-clamp-2">
+          {agent.description}
+        </p>
 
       {(agent.tools === '*' || baseTools.length > 0) && (
-        <div className="mb-3">
+        <div>
           <div className="text-xs text-foreground-muted mb-1.5">Tools:</div>
           <div className="flex flex-wrap gap-1.5">
             {agent.tools === '*' ? (
@@ -897,7 +899,7 @@ function AgentCard({ agent, onEdit }: { agent: AgentConfig; onEdit: (agent: Agen
         });
 
         return Object.keys(mcpByServer).length > 0 && (
-          <div className="mb-3">
+          <div>
             <div className="text-xs text-foreground-muted mb-1.5">MCP:</div>
             <div className="flex flex-wrap gap-1.5">
               {Object.entries(mcpByServer).map(([server, tools]) => (
@@ -915,7 +917,7 @@ function AgentCard({ agent, onEdit }: { agent: AgentConfig; onEdit: (agent: Agen
       })()}
 
       {agent.skills.length > 0 && (
-        <div className="mb-3">
+        <div>
           <div className="text-xs text-foreground-muted mb-1.5">Skills:</div>
           <div className="flex flex-wrap gap-1.5">
             {agent.skills.slice(0, MAX_DISPLAY_ITEMS).map((skill) => (
@@ -937,7 +939,7 @@ function AgentCard({ agent, onEdit }: { agent: AgentConfig; onEdit: (agent: Agen
 
       {/* Disallowed Tools - only show if there are any */}
       {agent.disallowedTools && agent.disallowedTools.length > 0 && (
-        <div className="mb-3">
+        <div>
           <div className="text-xs text-foreground-muted mb-1.5">Disallowed:</div>
           <div className="flex flex-wrap gap-1.5">
             {agent.disallowedTools.slice(0, MAX_DISPLAY_ITEMS).map((tool) => (
@@ -956,16 +958,17 @@ function AgentCard({ agent, onEdit }: { agent: AgentConfig; onEdit: (agent: Agen
           </div>
         </div>
       )}
+      </CardContent>
 
-      <div className="flex gap-2 mt-auto pt-3 border-t border-border-subtle">
+      <CardFooter className="mt-auto border-t border-border-subtle pt-3">
         <button
           onClick={() => onEdit(agent)}
           className="text-xs text-foreground-secondary hover:text-foreground transition-colors"
         >
           Edit
         </button>
-      </div>
-    </div>
+      </CardFooter>
+    </Card>
   )
 }
 
